@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
     const token = createSessionToken({
       userId: usuario.id,
-      rol: usuario.rol,
+      rol: usuario.rol as "COMERCIANTE" | "ADMIN",
       nombreComercio: usuario.nombreComercio,
     });
     setSessionCookie(token);
