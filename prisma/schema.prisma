@@ -1,0 +1,176 @@
+// =====================================================================
+// SCHEMA DE BASE DE DATOS - Plataforma B2B Mayorista de Papel/Limpieza
+// =====================================================================
+// Motor por defecto: SQLite (para correr rápido en dev / demo).
+// SQLite no soporta `enum` nativo de Prisma ni @default(autoincrement())
+// en un campo que no sea el @id — por eso acá los "enums" se modelan como
+// String simple (los valores válidos se controlan desde el código de la
+// app, en lib/pricing.ts y en los selects del admin).
+//
+// Para producción real: cambiar provider a "postgresql" y DATABASE_URL
+// a una conexión Postgres (Render, Supabase, Neon, etc.). Ahí sí se
+// podrían volver a usar `enum` nativos de Prisma si se quisiera.
+// =====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------
+// USUARIOS
+// ---------------------------------------------------------------------
+// rol válido: "COMERCIANTE" | "ADMIN"
+
+model Usuario {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  rol           String   @default("COMERCIANTE")
+  creadoEn      DateTime @default(now())
+
+  // Datos obligatorios de registro del comerciante
+  nombreComercio String
+  cuitODni       String
+  telefono       String
+  direccion      String   // dirección de entrega principal
+
+  sucursales     Sucursal[]
+  pedidos        Pedido[]
+
+  activo         Boolean  @default(true)
+}
+
+model Sucursal {
+  id          String   @id @default(cuid())
+  usuario     Usuario  @relation(fields: [usuarioId], references: [id])
+  usuarioId   String
+  nombre      String   // ej: "Sucursal Centro"
+  direccion   String
+  telefono    String?
+  esPrincipal Boolean  @default(false)
+}
+
+// ---------------------------------------------------------------------
+// CATÁLOGO
+// ---------------------------------------------------------------------
+
+model Marca {
+  id        String     @id @default(cuid())
+  nombre    String     @unique // "New Pel", "Elite", etc.
+  destacada Boolean    @default(false) // true para New Pel -> banner home
+  logoUrl   String?
+  productos Producto[]
+}
+
+model Categoria {
+  id        String     @id @default(cuid())
+  nombre    String     @unique // "Papel Higiénico", "Rollos de Cocina", "Servilletas", "Limpieza Heavy Duty"
+  slug      String     @unique
+  productos Producto[]
+}
+
+// presentacion válida: "PAQUETE" | "BULTO_CERRADO" | "PALLET_COMPLETO"
+
+model Producto {
+  id                String       @id @default(cuid())
+  nombre            String       // "New Pel Rollo de Cocina 100m"
+  descripcion       String?
+  sku               String       @unique
+  marca             Marca        @relation(fields: [marcaId], references: [id])
+  marcaId           String
+  categoria         Categoria    @relation(fields: [categoriaId], references: [id])
+  categoriaId       String
+  imagenUrl         String?      // imagen de portada (la que se ve en cards, buscador, carrito)
+  imagenes          ImagenProducto[] // galería adicional de fotos
+
+  presentacion      String       @default("PAQUETE")
+
+  // --- Conversión de unidades (paquete -> bulto -> pallet) ---
+  unidadesPorPaquete   Int       @default(1)   // ej: 1 rollo, 4 rollos, etc
+  paquetesPorBulto     Int       @default(1)   // ej: 12 paquetes por bulto
+  bultosPorPallet      Int       @default(1)   // ej: 40 bultos por pallet
+
+  // --- Precios y costos (para margen en el admin) ---
+  costoUnitario        Float     @default(0)   // costo por unidad mínima de venta (paquete)
+  precioPaquete         Float
+  precioBulto           Float?
+  precioPallet          Float?
+
+  // --- Stock (medido en la unidad mínima: paquetes) ---
+  stockPaquetes         Int       @default(0)
+
+  // --- Reglas de compra mínima ---
+  minimoCompraPaquetes  Int       @default(1)  // cantidad mínima a comprar de este producto
+
+  // --- Descuentos por volumen ---
+  descuentoBultoPct     Float?    // % de descuento si compra en bultos cerrados
+  descuentoPalletPct    Float?    // % de descuento si compra pallet completo
+
+  activo                Boolean   @default(true)
+  creadoEn              DateTime  @default(now())
+  actualizadoEn         DateTime  @updatedAt
+
+  itemsPedido           ItemPedido[]
+
+  @@index([nombre])
+}
+
+model ImagenProducto {
+  id         String   @id @default(cuid())
+  producto   Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  productoId String
+  url        String
+  orden      Int      @default(0)
+}
+
+// ---------------------------------------------------------------------
+// PEDIDOS
+// ---------------------------------------------------------------------
+// estado válido: "PENDIENTE" | "CONFIRMADO" | "EN_PREPARACION" | "ENVIADO" | "ENTREGADO" | "CANCELADO"
+
+model Pedido {
+  id            String        @id @default(cuid())
+  numero        Int           @unique // se calcula a mano al crear el pedido (ver app/api/orders/route.ts)
+  usuario       Usuario       @relation(fields: [usuarioId], references: [id])
+  usuarioId     String
+  items         ItemPedido[]
+
+  subtotal      Float
+  descuentoTotal Float        @default(0)
+  total         Float
+
+  estado        String        @default("PENDIENTE")
+  direccionEntrega String
+
+  notasCliente  String?
+  creadoEn      DateTime      @default(now())
+}
+
+model ItemPedido {
+  id            String       @id @default(cuid())
+  pedido        Pedido       @relation(fields: [pedidoId], references: [id])
+  pedidoId      String
+  producto      Producto     @relation(fields: [productoId], references: [id])
+  productoId    String
+
+  presentacion  String       // "PAQUETE" | "BULTO_CERRADO" | "PALLET_COMPLETO"
+  cantidad      Int          // cantidad en la unidad de "presentacion"
+  cantidadPaquetesEquivalente Int // normalizado a paquetes, para stock/reportes
+
+  precioUnitario Float       // precio unitario aplicado (según presentación)
+  subtotal       Float
+}
+
+// ---------------------------------------------------------------------
+// CONFIGURACIÓN DEL SITIO (fila única, editable desde Admin → Diseño)
+// ---------------------------------------------------------------------
+
+model SiteConfig {
+  id            String  @id @default("singleton")
+  heroImagenUrl String? // foto de fondo del hero de la Home (si no hay, se usa un fondo ilustrado por defecto)
+}
