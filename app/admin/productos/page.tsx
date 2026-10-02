@@ -41,6 +41,7 @@ export default function AdminProductosPage() {
   const [error, setError] = useState("");
   const [pagina, setPagina] = useState(1);
   const [busqueda, setBusqueda] = useState("");
+  const [urlGaleria, setUrlGaleria] = useState("");
   const POR_PAGINA = 10;
 
   async function cargarTodo() {
@@ -66,6 +67,7 @@ export default function AdminProductosPage() {
     });
     setEditando(false);
     setError("");
+    setUrlGaleria("");
     setModalAbierto(true);
   }
 
@@ -95,6 +97,7 @@ export default function AdminProductosPage() {
     });
     setEditando(true);
     setError("");
+    setUrlGaleria("");
     setModalAbierto(true);
   }
 
@@ -126,6 +129,13 @@ export default function AdminProductosPage() {
     if (!confirm("¿Dar de baja este producto? Dejará de mostrarse en el catálogo.")) return;
     await fetch(`/api/admin/products/${id}`, { method: "DELETE" });
     cargarTodo();
+  }
+
+  function agregarUrlGaleria() {
+    const url = urlGaleria.trim();
+    if (!/^https?:\/\//i.test(url)) return;
+    setForm({ ...form, imagenes: [...form.imagenes, url] });
+    setUrlGaleria("");
   }
 
   const productosFiltrados = productos.filter((p) =>
@@ -253,11 +263,22 @@ export default function AdminProductosPage() {
                   <label className="label">SKU</label>
                   <input className="input" required disabled={editando} value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} />
                 </div>
-                <ImageUploader
-                  value={form.imagenUrl}
-                  onChange={(url) => setForm({ ...form, imagenUrl: url })}
-                  carpeta="products"
-                />
+
+                {/* Portada: subir archivo o pegar link */}
+                <div>
+                  <ImageUploader
+                    value={form.imagenUrl}
+                    onChange={(url) => setForm({ ...form, imagenUrl: url })}
+                    carpeta="products"
+                  />
+                  <input
+                    className="input mt-2"
+                    type="url"
+                    placeholder="o pegá un link de imagen (https://...)"
+                    value={form.imagenUrl}
+                    onChange={(e) => setForm({ ...form, imagenUrl: e.target.value })}
+                  />
+                </div>
               </div>
 
               {/* Galería adicional de fotos */}
@@ -284,6 +305,24 @@ export default function AdminProductosPage() {
                     onChange={(url) => url && setForm({ ...form, imagenes: [...form.imagenes, url] })}
                     carpeta="products"
                   />
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    className="input"
+                    type="url"
+                    placeholder="o pegá un link de imagen (https://...)"
+                    value={urlGaleria}
+                    onChange={(e) => setUrlGaleria(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        agregarUrlGaleria();
+                      }
+                    }}
+                  />
+                  <button type="button" className="btn-secondary whitespace-nowrap" onClick={agregarUrlGaleria}>
+                    Agregar
+                  </button>
                 </div>
                 <p className="mt-1 text-[11px] text-slate-400">
                   Se van a mostrar en la ficha del producto, además de la foto de portada.

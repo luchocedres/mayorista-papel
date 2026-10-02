@@ -181,22 +181,28 @@ Ya no hace falta tocar la base de datos ni el seed para esto — están en el pa
 - **Admin → Categorías**: alta/edición/borrado.
 - **Admin → Clientes**: listado de comercios registrados, dar/quitar admin, activar/desactivar cuentas.
 
-## Subida de imágenes
+## Subida de imágenes (Cloudinary)
 
-Desde **Admin → Catálogo** y **Admin → Marcas** ahora se sube el archivo directamente
-(JPG/PNG/WEBP/GIF, máx. 5MB) — se guarda en `public/uploads/products` o `public/uploads/brands`
-y queda accesible en `/uploads/...`.
+Las fotos que se suben desde **Admin → Catálogo**, **Admin → Marcas** y **Admin → Diseño**
+se guardan en [Cloudinary](https://cloudinary.com) (tiene plan gratis de sobra para este uso),
+no en el disco del servidor — así sobreviven a los redeploys de Render, que borran cualquier
+archivo escrito en el disco local en cada actualización del sitio.
 
-⚠️ Ojo si en el futuro alojás esto en un hosting con sistema de archivos efímero
-(Render free tier, Vercel serverless, etc.): las imágenes subidas así se pierden en cada
-redeploy. Para producción real conviene subir a un storage externo (Cloudinary, S3,
-Supabase Storage) — el componente `components/admin/ImageUploader.tsx` y la ruta
-`app/api/admin/upload/route.ts` están aislados justamente para poder cambiar el destino
-del archivo sin tocar el resto de la app.
+Para que funcione hace falta:
+
+1. Crear una cuenta gratis en https://cloudinary.com
+2. En el Dashboard de Cloudinary, copiar: **Cloud Name**, **API Key** y **API Secret**.
+3. Cargar esos tres valores como variables de entorno:
+   - En tu `.env` local: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`.
+   - En Render: Web Service → Environment → agregar esas mismas tres variables.
+4. Correr `npm install` (agrega el paquete `cloudinary`) y volver a desplegar.
+
+⚠️ Las imágenes que hayas subido **antes** de este cambio (guardadas en el disco local viejo)
+ya se perdieron con el último redeploy y no se pueden recuperar — hay que volver a subirlas
+una vez que Cloudinary esté configurado. De acá en adelante no se van a volver a perder.
 
 ## Pendientes sugeridos para producción
 
 - Notificación por email cuando entra un pedido nuevo (lo dejamos para más adelante).
 - Rate limiting / captcha en registro y login.
-- Migrar `DATABASE_URL` a Postgres antes de ir a producción.
-- Si subís a un hosting con filesystem efímero, migrar la subida de imágenes a un storage externo (ver arriba).
+- Pantalla para que el admin cambie su propia contraseña desde el panel (hoy sólo se puede vía Prisma Studio o un script).

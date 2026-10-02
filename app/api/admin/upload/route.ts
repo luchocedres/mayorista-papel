@@ -1,14 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
+import { v2 as cloudinary } from "cloudinary";
 
 const TIPOS_PERMITIDOS = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
 
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
 export async function POST(req: NextRequest) {
   try {
     await requireSession("ADMIN");
+
+    if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+      return NextResponse.json(
+        { error: "Falta configurar Cloudinary (CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET) en las variables de entorno." },
+        { status: 500 }
+      );
+    }
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -25,15 +37,14 @@ export async function POST(req: NextRequest) {
     }
 
     const bytes = Buffer.from(await file.arrayBuffer());
-    const ext = path.extname(file.name) || ".jpg";
-    const nombreUnico = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+    const dataUri = `data:${file.type};base64,${bytes.toString("base64")}`;
 
-    const carpetaDestino = path.join(process.cwd(), "public", "uploads", carpeta);
-    await mkdir(carpetaDestino, { recursive: true });
-    await writeFile(path.join(carpetaDestino, nombreUnico), bytes);
+    const resultado = await cloudinary.uploader.upload(dataUri, {
+      folder: `newpel/${carpeta}`,
+      resource_type: "image",
+    });
 
-    const url = `/uploads/${carpeta}/${nombreUnico}`;
-    return NextResponse.json({ ok: true, url });
+    return NextResponse.json({ ok: true, url: resultado.secure_url });
   } catch (err: any) {
     console.error(err);
     return NextResponse.json({ error: err.message || "No se pudo subir la imagen." }, { status: 400 });
